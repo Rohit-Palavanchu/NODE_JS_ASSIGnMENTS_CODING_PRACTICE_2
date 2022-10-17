@@ -21,6 +21,8 @@ const authenticateToken=(request,response,next)=>{
                 response.send("Invalid JWT Token");
             }
             else{
+                const {username}=payload
+                request.username=username
                 next();
             }
         })
@@ -92,16 +94,28 @@ app.get('/user/tweets/feed/',authenticateToken,async(request,response)=>{
 })
 //API4
 app.get('/user/following/',authenticateToken,async(request,response)=>{
-    let query=`SELECT DISTINCT follower_user_id from follower inner join user on follower.follower_user_id=user.user_id ORDER BY follower_user_id`;
-    let execQuery=await db.all(query)
-    let a=[]
+    let query=`SELECT following_user_id from follower where follower_user_id=(SELECT user_id FROM user where username = '${request.username}')`;
+    let execQuery=await db.all(query);
+    let a=[];
     for(let i of execQuery){
-        a.push(await db.get(`SELECT name FROM user where 
-        user_id=${i.follower_user_id}`))
+        query=`SELECT name from user where user_id=${i.following_user_id}`;
+        let {name}=await db.get(query)
+        a.push({name:name})
     }
-    response.send(a);
+    response.send(a)
 })
-
+//API 5
+app.get('/user/followers/',authenticateToken,async(request,response)=>{
+    let query=`SELECT follower_user_id from follower where following_user_id=(SELECT user_id FROM user where username = '${request.username}')`;
+    let execQuery=await db.all(query);
+    let a=[];
+    for(let i of execQuery){
+        query=`SELECT name from user where user_id=${i.follower_user_id}`;
+        let {name}=await db.get(query)
+        a.push({name:name})
+    }
+    response.send(a)
+})
 //API6
 app.get('/tweets/:tweetId/',authenticateToken,async(request,response)=>{
     let {tweetId}=request.params
@@ -182,5 +196,27 @@ app.get('/user/tweets/',authenticateToken,async(request,response)=>{
         result.push(out)       
     }
     response.send(result)
+
+})
+app.post('/user/tweets/',authenticateToken,async(request,response)=>{
+    let {tweet}=request.body;
+    let query=`INSERT INTO tweet (tweet) VALUES ('${tweet}')`;
+    await db.run(query);
+    response.send("Created a Tweet")
+})
+app.delete('/tweets/:tweetId/',authenticateToken,async(request,response)=>{
+    let {tweetId}=request.params;
+    let query=`select (select user_id from user WHERE username='${request.username}') FROM tweet`;
+    let execQuery=await db.get(query)
+    if(execQuery.length===0){
+        response.status(401);
+        response.send("Invalid Request");
+        process.exit(1)
+    }
+    else{
+        query=`DELETE FROM tweet WHERE tweet_id=${tweetId}`;
+        execQuery=await db.run(query);
+        response.send("Tweet Removed");
+    }
 })
 module.exports=app;
