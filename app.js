@@ -180,23 +180,22 @@ app.get('/tweets/:tweetId/replies/',authenticateToken,async(request,response)=>{
     }
 })
 app.get('/user/tweets/',authenticateToken,async(request,response)=>{
-    let query=`SELECT * FROM tweet ORDER BY user_id`;
+    let query=`SELECT * FROM tweet where user_id=(SELECT user_id from user where username='${request.username}')`
     let execQuery=await db.all(query)
-    let result=[];
+    let res=[]
     for(let i of execQuery){
-        let out={};
-        out.tweet=i.tweet
-        let execQuery1=await db.get(`SELECT count(like_id) as likes from like WHERE tweet_id=${i.tweet_id}`)
-        let {likes}=execQuery1
-        out.likes=likes
-        execQuery1=await db.get(`SELECT count(reply) as replies from reply WHERE tweet_id=${i.tweet_id}`)
-        let {replies}=execQuery1;
-        out.replies=replies;
-        out.dateTime=i.date_time;
-        result.push(out)       
+        let out={}
+        out.tweet=i.tweet 
+        query=`SELECT count() as likes from like where tweet_id=${i.tweet_id}`
+        execQuery=await db.get(query)
+        out.likes=execQuery.likes 
+        query=`SELECT count() as replies from reply where tweet_id=${i.tweet_id}`
+        execQuery=await db.get(query)
+        out.replies=execQuery.replies
+        out.dateTime=i.date_time 
+        res.push(out)
     }
-    response.send(result)
-
+    response.send(res)
 })
 app.post('/user/tweets/',authenticateToken,async(request,response)=>{
     let {tweet}=request.body;
@@ -206,12 +205,11 @@ app.post('/user/tweets/',authenticateToken,async(request,response)=>{
 })
 app.delete('/tweets/:tweetId/',authenticateToken,async(request,response)=>{
     let {tweetId}=request.params;
-    let query=`select (select user_id from user WHERE username='${request.username}') FROM tweet`;
+    let query=`SELECT * FROM tweet WHERE tweet_id=${tweetId} and user_id IN (SELECT user_id from user Where username='${request.username}')`;
     let execQuery=await db.get(query)
-    if(execQuery.length===0){
+    if(execQuery===undefined){
         response.status(401);
         response.send("Invalid Request");
-        process.exit(1)
     }
     else{
         query=`DELETE FROM tweet WHERE tweet_id=${tweetId}`;
